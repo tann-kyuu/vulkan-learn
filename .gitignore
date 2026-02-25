@@ -2,4 +2,5 @@
 .vs
 .cache
 build
-glfw
+glfw/include
+glfw/lib
