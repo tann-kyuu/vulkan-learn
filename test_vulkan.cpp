@@ -5,6 +5,21 @@
 #include <algorithm>
 #include <iostream>
 #include <cstring>
+#include <fstream>
+
+std::vector<char> test::readFile(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    // ios::ate 从文件末尾开始读取，通过获取末尾指针确定文件与缓冲区大小。
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+    size_t fileSize = (size_t) file.tellg();
+    std::vector<char> buffer(fileSize);
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+    return buffer;
+}
 
 // --- Constructor --- //
 test::test() 
@@ -50,6 +65,9 @@ void test::initVulkan()
     pickupPhysicalDevice();
     createLogicalDevice();
     createSwapChain();
+    createImageViews();
+    createRenderPass();
+    createGraphicsPipeline();
 }
 
 // --- Debug Utils Messenger --- //
@@ -414,7 +432,7 @@ void test::getSwapChainImages() {
     }
 }
 
-void test::createImageView() {
+void test::createImageViews() {
     imageViews.resize(swapChainImages.size());
     for (int index = 0; index < swapChainImages.size(); ++index) {
         VkImageViewCreateInfo createInfo{};
@@ -436,6 +454,163 @@ void test::createImageView() {
         }
     }
 }
+
+void test::createRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = swapChainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+}
+
+VkShaderModule test::createShaderModule(const std::vector<char>& code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(logicDevice, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shader module!");
+    }
+    return shaderModule;
+}
+
+void test::createGraphicsPipeline() {
+    auto vertShaderCode = readFile("shaders/vertexShader.spv");
+    auto fragShaderCode = readFile("shaders/fragmentShader.spv");
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    vkDestroyShaderModule(logicDevice, vertShaderModule, nullptr);
+    vkDestroyShaderModule(logicDevice, fragShaderModule, nullptr);
+
+    // 着色器阶段创建
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};  
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    vertShaderStageInfo.pName = "main";
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragShaderModule;
+    fragShaderStageInfo.pName = "main";
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+    
+    // **固定功能状态**
+
+    // 动态状态
+    /* std::vector<VkDynamicState> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data(); */
+
+    // 顶点输入
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.pVertexBindingDescriptions = nullptr;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputInfo.pVertexAttributeDescriptions = nullptr; // optional
+
+    // 输入汇编
+    /* `VkPipelineInputAssemblyStateCreateInfo` 结构描述了两件事：
+     * 将从顶点绘制的几何图形类型以及是否应启用基元重启。前者在 `topology` 成员中指定，并且可以具有如下值：
+     * `VK_PRIMITIVE_TOPOLOGY_POINT_LIST`：来自顶点的点
+     * `VK_PRIMITIVE_TOPOLOGY_LINE_LIST`：每 2 个顶点之间的直线，不复用
+     * `VK_PRIMITIVE_TOPOLOGY_LINE_STRIP`：每条线的结束顶点用作下一条线的起始顶点
+     * `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST`：每 3 个顶点组成的三角形，不复用
+     * `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP`：每个三角形的第二个和第三个顶点用作下一个三角形的前两个顶点
+     * 通常，顶点按顺序从顶点缓冲区按索引加载，但是使用 *元素缓冲区*，您可以自己指定要使用的索引。
+     * 这允许您执行诸如复用顶点之类的优化。如果将 `primitiveRestartEnable` 成员设置为 `VK_TRUE`，
+     * 则可以使用 `0xFFFF` 或 `0xFFFFFFFF` 的特殊索引来分解 `_STRIP` 拓扑模式中的线和三角形。
+     * 我们打算在本教程中绘制三角形，因此我们将坚持使用以下结构的以下数据：
+     */
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // 视口和裁剪矩形  (静态状态)
+    VkViewport viewport{};
+    viewport.x = 0.f;
+    viewport.y = 0.f;
+    viewport.width = (float) swapChainExtent.width;
+    viewport.height = (float) swapChainExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapChainExtent;
+
+    // 光栅化器
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE; 
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.f; // > 1.0 需物理设备支持wideLines特性
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE; // 深度值偏移
+    rasterizer.depthBiasConstantFactor = 0.f;
+    rasterizer.depthBiasSlopeFactor = 0.f;
+    rasterizer.depthBiasClamp = 0.f;
+
+    // 多重采样
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.minSampleShading = 1.f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToOneEnable = VK_FALSE;
+    multisampling.alphaToCoverageEnable = VK_FALSE;
+    
+    // 深度和模板测试 (如果需要)
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    
+    // 颜色混合
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT 
+                                        | VK_COLOR_COMPONENT_G_BIT 
+                                        | VK_COLOR_COMPONENT_B_BIT 
+                                        | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.f;
+    colorBlending.blendConstants[1] = 0.f;
+    colorBlending.blendConstants[2] = 0.f;
+    colorBlending.blendConstants[3] = 0.f;
+    
+    // 管线布局
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(logicDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create pipeline layout!");
+    }
+
+    vkDestroyShaderModule(logicDevice, vertShaderModule, nullptr);
+    vkDestroyShaderModule(logicDevice, fragShaderModule, nullptr);
+}
+
 
 // --- Debug Callback --- //
 VKAPI_ATTR VkBool32 VKAPI_CALL test::debugCallback(
@@ -476,7 +651,7 @@ void test::setupDebugMessenger()
     }
 }
 
-//调试信使创建信息填充
+// 调试信使创建信息填充
 void test::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& debugUtilsMessenger)
 {
     debugUtilsMessenger = {};
@@ -507,10 +682,7 @@ VkResult test::createDebugUtilsMessenger(
     }
 }
 
-// Surface:
-// 1.绑定原生窗口
-// 2.协商显示参数
-// 2.缓冲区交换
+
 void test::createSurface()
 {
     //using GLFW surface
@@ -520,19 +692,6 @@ void test::createSurface()
 }
 
 // --- Cleanup --- //
-test::~test()
-{
-    cleanupAll();
-}
-
-void test::cleanupAll()
-{
-    cleanupVulkan();
-    cleanupWindow();
-}
-
-
-
 void test::cleanupWindow()
 {
     glfwDestroyWindow(window);
@@ -549,4 +708,15 @@ void test::cleanupVulkan()
     }
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
+}
+
+void test::cleanupAll()
+{
+    cleanupVulkan();
+    cleanupWindow();
+}
+
+test::~test()
+{
+    cleanupAll();
 }

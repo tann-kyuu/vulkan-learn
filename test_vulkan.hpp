@@ -1,4 +1,5 @@
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 #include <optional>
 
@@ -81,7 +82,12 @@ private:
     VkExtent2D chooseExtent2D(const SwapChainDetails& details);
     void createSwapChain();
     void getSwapChainImages();
-    void createImageView();
+    void createImageViews();
+    void createRenderPass();
+    void createGraphicsPipeline();
+    VkShaderModule createShaderModule(const std::vector<char>& code);
+private:
+    static std::vector<char> readFile(const std::string& filename);
 private:
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageServerity,
@@ -109,6 +115,7 @@ private:
     VkExtent2D swapChainExtent;
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> imageViews;
+    VkPipelineLayout pipelineLayout;
 private:
     queueFamily q_Family;
 };
