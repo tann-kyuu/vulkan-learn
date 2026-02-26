@@ -1,4 +1,5 @@
 #include "test_vulkan.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <set>
@@ -216,14 +217,15 @@ bool test::isDeviceSuitable(VkPhysicalDevice c_device) {
     bool SwapChainAdequate = false;
     if (deviceExtensionSupported) {
         SwapChainDetails detail = querySwapChainSupport(c_device);
-        SwapChainAdequate = detail.formats.empty() && detail.modes.empty();
+        SwapChainAdequate = !detail.formats.empty() && !detail.modes.empty();
     }
     // check queue family of the device
     // Choose device if all requirements are met
     if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
                                         deviceFeatures.geometryShader &&
                                         q_Family.isComplete() &&
-                                        deviceExtensionSupported) {
+                                        deviceExtensionSupported &&
+                                        SwapChainAdequate) {
         std::cout << "Choice device id " << deviceProperties.deviceID << std::endl;
         return true;
     }
@@ -421,6 +423,11 @@ void test::createSwapChain() {
     if (vkCreateSwapchainKHR(logicDevice, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create swap chain!");
     }
+
+    getSwapChainImages();
+    
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
 }
 
 void test::getSwapChainImages() {
@@ -459,6 +466,32 @@ void test::createRenderPass() {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = swapChainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(logicDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create render pass!");
+    }
 }
 
 VkShaderModule test::createShaderModule(const std::vector<char>& code) {
@@ -474,12 +507,10 @@ VkShaderModule test::createShaderModule(const std::vector<char>& code) {
 }
 
 void test::createGraphicsPipeline() {
-    auto vertShaderCode = readFile("shaders/vertexShader.spv");
-    auto fragShaderCode = readFile("shaders/fragmentShader.spv");
+    auto vertShaderCode = readFile("shader.vert.spv");
+    auto fragShaderCode = readFile("shader.frag.spv");
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-    vkDestroyShaderModule(logicDevice, vertShaderModule, nullptr);
-    vkDestroyShaderModule(logicDevice, fragShaderModule, nullptr);
 
     // 着色器阶段创建
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};  
@@ -497,14 +528,14 @@ void test::createGraphicsPipeline() {
     // **固定功能状态**
 
     // 动态状态
-    /* std::vector<VkDynamicState> dynamicStates = {
+    std::vector<VkDynamicState> dynamicStates = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
     };
     VkPipelineDynamicStateCreateInfo dynamicState{};
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data(); */
+    dynamicState.pDynamicStates = dynamicStates.data();
 
     // 顶点输入
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
@@ -543,6 +574,13 @@ void test::createGraphicsPipeline() {
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapChainExtent;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
 
     // 光栅化器
     VkPipelineRasterizationStateCreateInfo rasterizer{};
@@ -605,6 +643,28 @@ void test::createGraphicsPipeline() {
 
     if (vkCreatePipelineLayout(logicDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout!");
+    }
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = nullptr; // Optional
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = nullptr; // Optional
+    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+    pipelineInfo.basePipelineIndex = -1; // Optional
+
+    if (vkCreateGraphicsPipelines(logicDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create graphics pipelines!");
     }
 
     vkDestroyShaderModule(logicDevice, vertShaderModule, nullptr);
@@ -700,12 +760,22 @@ void test::cleanupWindow()
 
 void test::cleanupVulkan()
 {
+    vkDestroyPipeline(logicDevice, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(logicDevice, pipelineLayout, nullptr);
+    vkDestroyRenderPass(logicDevice, renderPass, nullptr);
+
+    for (auto imageView : imageViews) {
+        vkDestroyImageView(logicDevice, imageView, nullptr);
+    }
+
     vkDestroySwapchainKHR(logicDevice, swapChain, nullptr);
     vkDestroyDevice(logicDevice, nullptr);
+
     if (enabledValidationLayer)
     {
         destoryDebugUtilsMessenger(instance, debugMessenger, nullptr);
     }
+
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 }

@@ -84,8 +84,8 @@ private:
     void getSwapChainImages();
     void createImageViews();
     void createRenderPass();
-    void createGraphicsPipeline();
     VkShaderModule createShaderModule(const std::vector<char>& code);
+    void createGraphicsPipeline();
 private:
     static std::vector<char> readFile(const std::string& filename);
 private:
@@ -115,7 +115,9 @@ private:
     VkExtent2D swapChainExtent;
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> imageViews;
+    VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
+    VkPipeline graphicsPipeline;
 private:
     queueFamily q_Family;
 };

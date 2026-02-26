@@ -3,4 +3,4 @@
 .cache
 build
 glfw/include
-glfw/lib
+glfw/lib*
