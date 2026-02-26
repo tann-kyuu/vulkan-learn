@@ -86,6 +86,7 @@ private:
     void createRenderPass();
     VkShaderModule createShaderModule(const std::vector<char>& code);
     void createGraphicsPipeline();
+    void createFramebuffers();
 private:
     static std::vector<char> readFile(const std::string& filename);
 private:
@@ -118,6 +119,7 @@ private:
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
 private:
     queueFamily q_Family;
 };

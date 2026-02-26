@@ -69,6 +69,7 @@ void test::initVulkan()
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    createFramebuffers();
 }
 
 // --- Debug Utils Messenger --- //
@@ -425,7 +426,7 @@ void test::createSwapChain() {
     }
 
     getSwapChainImages();
-    
+
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
 }
@@ -671,6 +672,29 @@ void test::createGraphicsPipeline() {
     vkDestroyShaderModule(logicDevice, fragShaderModule, nullptr);
 }
 
+void test::createFramebuffers() {
+    swapChainFramebuffers.resize(imageViews.size());
+    for (size_t i = 0; i < imageViews.size(); ++i) {
+        VkImageView attachments[] = {
+            imageViews[i]
+        };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = swapChainExtent.width;
+        framebufferInfo.height = swapChainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(logicDevice, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create framebuffer!");
+        }
+    }
+
+}
+
 
 // --- Debug Callback --- //
 VKAPI_ATTR VkBool32 VKAPI_CALL test::debugCallback(
@@ -760,6 +784,10 @@ void test::cleanupWindow()
 
 void test::cleanupVulkan()
 {
+    for (auto framebuffer : swapChainFramebuffers) {
+        vkDestroyFramebuffer(logicDevice, framebuffer, nullptr);
+    }
+
     vkDestroyPipeline(logicDevice, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(logicDevice, pipelineLayout, nullptr);
     vkDestroyRenderPass(logicDevice, renderPass, nullptr);
