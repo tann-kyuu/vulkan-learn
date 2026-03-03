@@ -8,6 +8,6 @@ const std::string title = "Triangle";
 int main() {
     windowInfo info{width, height, title};
     test t01(info);
-    t01.run();
+    t01.mainLoop();
     return 0;
 }

@@ -11,6 +11,8 @@ const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 }; // enumerate required Device Extensions
 
+const int MAX_FRAMES_IN_FLIGHT = 2;
+
 #ifdef NDEBUG
     const bool enabledValidationLayer = false;
 #else
@@ -52,7 +54,7 @@ public:
     test(windowInfo window_info);
     ~test();
 public:
-    void run();
+    void mainLoop();
 private:
     void initWindow();
     void initVulkan();
@@ -87,6 +89,11 @@ private:
     VkShaderModule createShaderModule(const std::vector<char>& code);
     void createGraphicsPipeline();
     void createFramebuffers();
+    void createCommandPool();
+    void createCommandBuffer();
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void createSyncObjects();
+    void drawFrame();
 private:
     static std::vector<char> readFile(const std::string& filename);
 private:
@@ -114,12 +121,18 @@ private:
     VkQueue presentQueue;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
-    std::vector<VkImage> swapChainImages;
-    std::vector<VkImageView> imageViews;
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+    VkSemaphore imageAvaliableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
+    VkFence inFlightFence;
+private:
+    std::vector<VkImage> swapChainImages;
+    std::vector<VkImageView> imageViews;
+    std::vector<VkFramebuffer> swapChainFramebuffers;    
 private:
     queueFamily q_Family;
 };
